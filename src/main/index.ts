@@ -30,7 +30,10 @@ import {
   getStatus
 } from './env'
 import { loadSettings, saveSettings } from './settings'
-import { loadSongs, removeSong, stemBuffers, stemsDir, stemsFor, mixWavPath, AUDIO_EXTENSIONS } from './library'
+import {
+  loadSongs, removeSong, stemBuffers, stemsDir, stemsFor, mixWavPath,
+  AUDIO_EXTENSIONS, loadStemPan, saveStemPan
+} from './library'
 import { startJob, startLocalJob, cancelJob, searchYouTube } from './pipeline'
 import { initUpdater } from './updater'
 import { runSmoke } from './smoke'
@@ -244,6 +247,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('env:update-ytdlp', async () => updateYtDlp())
 
   ipcMain.handle('library:list', () => loadSongs())
+  ipcMain.handle('song:pan:get', (_e, videoId: string) => loadStemPan(videoId))
+  ipcMain.handle('song:pan:set', (_e, videoId: string, pans: unknown) => saveStemPan(videoId, pans))
   ipcMain.handle('library:delete', (_e, videoId: string) => removeSong(videoId))
   ipcMain.handle('song:buffers', (_e, videoId: string) => {
     const song = loadSongs().find((s) => s.videoId === videoId)

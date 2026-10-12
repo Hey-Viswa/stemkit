@@ -14,6 +14,7 @@
     "typecheck:node": "node scripts/run.cjs typecheck:node",
     "typecheck:web": "node scripts/run.cjs typecheck:web",
     "typecheck": "node scripts/run.cjs typecheck",
+    "test:audio": "node scripts/run.cjs test:audio",
     "dist": "node scripts/run.cjs dist",
     "dist:win": "node scripts/run.cjs dist:win",
     "dist:linux": "node scripts/run.cjs dist:linux",
