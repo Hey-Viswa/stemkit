@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AppSettings, Song, StemId } from '../../../shared/types'
+import type { AppSettings, Song, StemId, StemPanMap } from '../../../shared/types'
 import { engine, decodePayload, type BufferMap } from '../lib/engine'
 import { buildStemMeta } from '../lib/stems'
 import { fmtTime } from '../lib/format'
@@ -52,6 +52,13 @@ export function Player({ song, settings }: Props): React.ReactElement {
   const [buffers, setBuffers] = useState<BufferMap>({})
 
   const [vols, setVols] = useState<Partial<Record<StemId, number>>>({})
+  const [pans, setPans] = useState<StemPanMap>({})
+  const [panError, setPanError] = useState<string | null>(null)
+  const pansRef = useRef<StemPanMap>({})
+  const panSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingPan = useRef<{ videoId: string; pans: StemPanMap } | null>(null)
+  const panGeneration = useRef(0)
+  const panRevision = useRef(0)
   const [mutes, setMutes] = useState<Set<StemId>>(new Set())
   const [solos, setSolos] = useState<Set<StemId>>(new Set())
   const [master, setMaster] = useState(0.9)
@@ -73,6 +80,10 @@ export function Player({ song, settings }: Props): React.ReactElement {
   })
 
   useEffect(() => {
+    const generation = ++panGeneration.current
+    setPans({})
+    pansRef.current = {}
+    setPanError(null)
     posRef.current = 0
     setPlaying(false)
     playingRef.current = false
@@ -88,10 +99,30 @@ export function Player({ song, settings }: Props): React.ReactElement {
     engine.stopAll()
 
     let cancelled = false
+    const flushPan = (): void => {
+      if (panSaveTimer.current !== null) clearTimeout(panSaveTimer.current)
+      panSaveTimer.current = null
+      const pending = pendingPan.current
+      pendingPan.current = null
+      if (pending) void window.stemkit.setStemPan(pending.videoId, pending.pans).catch(() => {})
+    }
+    window.addEventListener('beforeunload', flushPan)
     setDecoding(true)
-    getDecoded(song.videoId)
-      .then((decoded) => {
+    Promise.all([
+      getDecoded(song.videoId),
+      window.stemkit.getStemPan(song.videoId).catch(() => {
+        if (!cancelled) setPanError('Could not load saved pan settings. Using center.')
+        return {} as StemPanMap
+      })
+    ])
+      .then(([decoded, savedPan]) => {
         if (cancelled) return
+        const initialPans = Object.fromEntries(Object.keys(decoded).map((id) => {
+          const value = savedPan[id as StemId]
+          return [id, typeof value === 'number' && Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0]
+        })) as StemPanMap
+        pansRef.current = initialPans
+        setPans(initialPans)
         setBuffers(decoded)
         engine.setBuffers(decoded)
         setVols(Object.fromEntries(Object.keys(decoded).map((id) => [id, 1])))
@@ -107,6 +138,9 @@ export function Player({ song, settings }: Props): React.ReactElement {
 
     return () => {
       cancelled = true
+      if (panGeneration.current === generation) ++panGeneration.current
+      window.removeEventListener('beforeunload', flushPan)
+      flushPan()
       engine.stopAll()
       hostRef.current?.destroy()
       hostRef.current = null
@@ -150,8 +184,31 @@ export function Player({ song, settings }: Props): React.ReactElement {
   }, [song.videoId, decoding, decodeError, showVideo])
 
   useEffect(() => {
-    engine.applyMix(vols, mutes, solos, master)
-  }, [vols, mutes, solos, master])
+    engine.applyMix(vols, mutes, solos, master, pans)
+  }, [vols, mutes, solos, master, pans])
+
+  const changePan = (id: StemId, value: number): void => {
+    const next = { ...pansRef.current, [id]: value }
+    pansRef.current = next
+    setPans(next)
+    const generation = panGeneration.current
+    const revision = ++panRevision.current
+    pendingPan.current = { videoId: song.videoId, pans: next }
+    if (panSaveTimer.current !== null) clearTimeout(panSaveTimer.current)
+    panSaveTimer.current = setTimeout(() => {
+      panSaveTimer.current = null
+      const pending = pendingPan.current
+      pendingPan.current = null
+      if (!pending) return
+      void window.stemkit.setStemPan(pending.videoId, pending.pans).then(() => {
+        if (generation === panGeneration.current && revision === panRevision.current) setPanError(null)
+      }).catch(() => {
+        if (generation === panGeneration.current && revision === panRevision.current) {
+          setPanError('Could not save pan settings. Your live pan is still applied.')
+        }
+      })
+    }, 250)
+  }
 
   useEffect(() => {
     if (!playing) return
@@ -400,6 +457,7 @@ export function Player({ song, settings }: Props): React.ReactElement {
             youtubeUrl={youtubeUrl ?? undefined}
           />
 
+          {panError && <p role="status" className="mt-3 text-xs text-amber-300">{panError}</p>}
           <div className="mt-4 space-y-2">
             {decoding
               ? [...Array(4)].map((_, i) => (
@@ -418,6 +476,8 @@ export function Player({ song, settings }: Props): React.ReactElement {
                 getPosition={getPosition}
                 audible={!mutes.has(meta.id) && (solos.size === 0 || solos.has(meta.id))}
                 volume={vols[meta.id] ?? 1}
+                pan={pans[meta.id] ?? 0}
+                onPan={(value) => changePan(meta.id, value)}
                 muted={mutes.has(meta.id)}
                 soloed={solos.has(meta.id)}
                 onToggleMute={() => toggleMute(meta.id)}
