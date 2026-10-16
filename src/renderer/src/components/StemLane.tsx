@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { StemId } from '../../../shared/types'
 import { DownloadIcon } from './Icons'
+import { PanKnob } from './PanKnob'
 
 export interface StemMeta {
   id: StemId
@@ -37,6 +38,8 @@ interface Props {
   getPosition: () => number
   audible: boolean
   volume: number
+  pan: number
+  onPan: (value: number) => void
   muted: boolean
   soloed: boolean
   onToggleMute: () => void
@@ -53,6 +56,8 @@ export function StemLane({
   getPosition,
   audible,
   volume,
+  pan,
+  onPan,
   muted,
   soloed,
   onToggleMute,
@@ -174,10 +179,12 @@ export function StemLane({
         }}
       />
 
+      <PanKnob label={meta.label} color={meta.color} value={pan} onChange={onPan} />
+
       {onExport && (
         <button
           onClick={onExport}
-          title="Export stem as WAV"
+          title="Export stem"
           className="no-drag w-6 h-6 rounded-md bg-white/5 hover:bg-white/10 text-white/40 hover:text-white flex items-center justify-center transition-colors shrink-0"
         >
           <DownloadIcon className="w-3.5 h-3.5" />

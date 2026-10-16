@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { app, BrowserWindow, net } from 'electron'
 import type { EngineStatus, GpuVendor } from '../shared/types'
+import { resolveDataDir } from './data-dir'
 
 export interface ToolInfo {
   found: boolean
@@ -29,7 +30,7 @@ const state: EnvState = {
 }
 
 export function userDataDir(): string {
-  return app.getPath('userData')
+  return resolveDataDir(process.env, app.getPath('userData'))
 }
 
 const IS_WIN = process.platform === 'win32'
@@ -802,6 +803,14 @@ const GPU_TORCH_INDEX: Record<GpuVendor, string> = {
 }
 const AMD_TORCH_VERSION = '2.8.0'
 
+/* PyTorch stopped shipping macOS x86_64 wheels after 2.2.2 — every later
+   release is arm64-only on mac, so an Intel Mac sees a version list that
+   dead-ends at 2.2.2 and `torch==2.5.1` fails with "no matching
+   distribution". 2.2.2 is the last one that installs there, and it still
+   covers the bundled runtime's python (3.11 cp311 macosx_10_9_x86_64). */
+const CPU_TORCH_VERSION =
+  process.platform === 'darwin' && process.arch !== 'arm64' ? '2.2.2' : '2.5.1'
+
 /* official rocm wheels ship kernel images for a subset of targets; consumer
    RDNA2/3 parts (RX 6600 = gfx1032, 7600 = gfx1102, 680M iGPU = gfx1035, …)
    need HSA_OVERRIDE_GFX_VERSION to run the nearest code object. RDNA4
@@ -1207,8 +1216,8 @@ export async function bootstrap(): Promise<boolean> {
           'install',
           '--progress-bar',
           'off',
-          'torch==2.5.1',
-          'torchaudio==2.5.1',
+          `torch==${CPU_TORCH_VERSION}`,
+          `torchaudio==${CPU_TORCH_VERSION}`,
           '--index-url',
           'https://download.pytorch.org/whl/cpu'
         ])
@@ -1231,8 +1240,8 @@ export async function bootstrap(): Promise<boolean> {
         '--progress-bar',
         'off',
         'demucs==4.0.1',
-         'torch==2.5.1',
-        'torchaudio==2.5.1',
+        `torch==${CPU_TORCH_VERSION}`,
+        `torchaudio==${CPU_TORCH_VERSION}`,
         'numpy<2',
         'beartype',
         'rotary-embedding-torch',

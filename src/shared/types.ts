@@ -1,4 +1,5 @@
 export type StemId = 'vocals' | 'drums' | 'bass' | 'other' | 'piano' | 'guitar'
+export type StemPanMap = Partial<Record<StemId, number>>
 
 // which GPU vendor GPU acceleration targets: NVIDIA via CUDA torch (windows
 // + linux), AMD via ROCm torch (linux only)
@@ -34,6 +35,10 @@ export interface AppSettings {
   // hide the YouTube video while playing: stems are always played locally,
   // this stops streaming the video and falls back to cached thumbnails
   hideVideo: boolean
+  // format used when exporting stems: wav is the lossless source format,
+  // aac (.m4a) is transcoded on export via the bundled ffmpeg. mp3 isn't an
+  // option — the bundled ffmpeg is a minimal static build without libmp3lame
+  exportFormat: 'wav' | 'aac'
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -41,7 +46,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   htdemucsFt: false,
   roformerVocals: false,
   gpuSplit: false,
-  hideVideo: false
+  hideVideo: false,
+  exportFormat: 'wav'
 }
 
 export interface EngineStatus {
@@ -117,6 +123,8 @@ export interface StemKitApi {
   listSongs(): Promise<Song[]>
   deleteSong(videoId: string): Promise<void>
   getBuffers(videoId: string): Promise<Record<string, Uint8Array>>
+  getStemPan(videoId: string): Promise<StemPanMap>
+  setStemPan(videoId: string, pans: StemPanMap): Promise<void>
   exportStem(videoId: string, stem: string): Promise<{ saved: boolean; path?: string }>
   exportAllStems(videoId: string): Promise<{ saved: boolean; path?: string; count?: number }>
   searchYouTube(query: string): Promise<SearchResult[]>
@@ -126,6 +134,7 @@ export interface StemKitApi {
   cancelJob(videoId?: string): Promise<void>
   openExternal(url: string): Promise<void>
   getAppVersion(): Promise<string>
+  checkForUpdates(): Promise<{ ok: boolean }>
   installUpdate(): void
   getSettings(): Promise<AppSettings>
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>
@@ -134,6 +143,7 @@ export interface StemKitApi {
   enginesStatus(): Promise<EngineStatus>
   fetchEngine(which: 'vocals' | 'ft' | 'gpu'): Promise<void>
   onUpdateEvent(cb: (ev: UpdateEvent) => void): () => void
+  onShowAbout(cb: () => void): () => void
   onJobEvent(cb: (ev: JobEvent) => void): () => void
   onEnvEvent(cb: (ev: EnvEvent) => void): () => void
   onSettingsChange(cb: (settings: AppSettings) => void): () => void

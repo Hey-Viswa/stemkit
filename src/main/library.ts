@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, openSync, r
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { userDataDir } from './env'
-import { DEFAULT_STEMS, type Song } from '../shared/types'
+import { DEFAULT_STEMS, type Song, type StemPanMap, type StemId } from '../shared/types'
 
 // drives both the file-dialog filter and the pre-flight extension check in
 // startLocalJob; anything here is fair game for ffmpeg to decode
@@ -76,6 +76,43 @@ export function removeSong(videoId: string): Song[] {
 
 export function stemsFor(song?: Song | null): string[] {
   return song?.stems?.length ? song.stems : DEFAULT_STEMS
+}
+
+function panSong(videoId: string): Song {
+  const song = loadSongs().find((s) => s.videoId === videoId)
+  if (!song || typeof videoId !== 'string' || !/^[\w-]+$/.test(videoId)) {
+    throw new Error('Unknown song')
+  }
+  return song
+}
+
+function normalizePan(song: Song, value: unknown): StemPanMap {
+  const pans: StemPanMap = {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return pans
+  const allowed = new Set<StemId>(['vocals', 'drums', 'bass', 'other', 'piano', 'guitar'])
+  for (const id of stemsFor(song)) {
+    if (!allowed.has(id as StemId)) continue
+    const pan = (value as Record<string, unknown>)[id]
+    if (typeof pan === 'number' && Number.isFinite(pan)) {
+      pans[id as StemId] = Math.max(-1, Math.min(1, pan))
+    }
+  }
+  return pans
+}
+
+export function loadStemPan(videoId: string): StemPanMap {
+  const song = panSong(videoId)
+  try {
+    return normalizePan(song, JSON.parse(readFileSync(join(songDir(videoId), 'pan.json'), 'utf8')))
+  } catch {
+    return {}
+  }
+}
+
+export function saveStemPan(videoId: string, pans: unknown): void {
+  const song = panSong(videoId)
+  // Do not recreate a deleted song directory for a late player save.
+  writeFileSync(join(songDir(videoId), 'pan.json'), JSON.stringify(normalizePan(song, pans), null, 2))
 }
 
 export function stemsPresent(videoId: string, stems: string[]): boolean {
