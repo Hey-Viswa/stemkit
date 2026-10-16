@@ -306,6 +306,7 @@ export function Player({ song, settings }: Props): React.ReactElement {
   }, [song.videoId])
 
 
+
   const applyPreset = (p: PresetId): void => {
     setPreset(p)
     setMutes(new Set())
@@ -348,11 +349,16 @@ export function Player({ song, settings }: Props): React.ReactElement {
       const lane = STEM_KEYS.indexOf(e.key)
       if (lane !== -1 && lane < stemMeta.length && !e.altKey && !e.ctrlKey && !e.metaKey) {
         toggleMute(stemMeta[lane].id)
+      } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+        if (decoding || decodeError) return
+        e.preventDefault()
+        const step = e.shiftKey ? 15 : 5
+        seekTo(posRef.current + (e.code === 'ArrowLeft' ? -step : step))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePlay, toggleMute, stemMeta])
+  }, [togglePlay, toggleMute, stemMeta, seekTo, decoding, decodeError])
 
   const toggleSolo = (id: StemId): void => {
     setPreset('custom')
